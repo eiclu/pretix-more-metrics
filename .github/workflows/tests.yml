@@ -1,0 +1,82 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install flake8 isort
+      - run: flake8 pretix_more_metrics tests integration
+      - run: isort --check --diff pretix_more_metrics tests integration
+
+  unit:
+    name: Unit tests (pretix ${{ matrix.pretix }}, Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { python: "3.11", pretix: "2026.9.3" }
+          - { python: "3.13", pretix: "2026.9.3" }
+          - { python: "3.13", pretix: "latest" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+      - name: Install pretix and the plugin
+        run: |
+          if [ "${{ matrix.pretix }}" = "latest" ]; then pip install pretix; else pip install "pretix==${{ matrix.pretix }}"; fi
+          pip install -e ".[test]"
+      - run: python -m pytest -v
+
+  integration:
+    name: Integration (pretix/standalone:${{ matrix.pretix }} + PostgreSQL + Redis + Prometheus)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pretix: ["2026.9.3", "stable"]
+    env:
+      PRETIX_VERSION: ${{ matrix.pretix }}
+      COMPOSE: docker compose -f integration/docker-compose.yml
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start pretix, PostgreSQL, Redis and Prometheus
+        run: $COMPOSE up -d --build --wait --wait-timeout 600
+      - name: Create organizer, event, quotas and API token
+        run: |
+          $COMPOSE exec -T -e AUTOMIGRATE=skip pretix pretix shell < integration/seed.py | tee seed.log
+          echo "SEED=$(sed -n 's/^SEED=//p' seed.log)" >> "$GITHUB_ENV"
+      - name: Generate traffic and check the metrics in Prometheus
+        run: python3 integration/run_checks.py "$SEED"
+      - name: Diagnostics
+        if: failure()
+        run: |
+          curl -s -u metrics:metrics-ci-secret http://localhost:8345/metrics | grep -v _bucket || true
+          curl -s http://localhost:9090/api/v1/targets || true
+          $COMPOSE logs --tail 300 pretix prometheus
+      - name: Save /metrics output
+        if: always()
+        run: curl -s -u metrics:metrics-ci-secret http://localhost:8345/metrics > metrics-${{ matrix.pretix }}.txt || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: metrics-${{ matrix.pretix }}
+          path: metrics-${{ matrix.pretix }}.txt
+      - name: Stop
+        if: always()
+        run: $COMPOSE down -v

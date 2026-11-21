@@ -1,0 +1,39 @@
+[project]
+name = "pretix-more-metrics"
+dynamic = ["version"]
+description = "Additional Prometheus metrics for pretix (quotas, visitors, shop funnel, PostgreSQL, Redis, host), served from pretix's built-in /metrics endpoint."
+readme = "README.md"
+requires-python = ">=3.11"
+keywords = ["pretix", "prometheus", "metrics"]
+dependencies = []
+
+[project.entry-points."pretix.plugin"]
+pretix_more_metrics = "pretix_more_metrics:PretixPluginMeta"
+
+[project.optional-dependencies]
+test = ["pytest", "pytest-django", "fakeredis"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = { attr = "pretix_more_metrics.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["pretix_more_metrics*"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+testpaths = ["tests"]
+
+[tool.isort]
+combine_as_imports = true
+default_section = "THIRDPARTY"
+include_trailing_comma = true
+known_first_party = ["pretix_more_metrics"]
+known_third_party = ["pretix"]
+multi_line_output = 5

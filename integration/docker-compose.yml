@@ -1,0 +1,61 @@
+name: pretix-more-metrics-ci
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pretix
+      POSTGRES_PASSWORD: pretix
+      POSTGRES_DB: pretix
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pretix"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  mailpit:
+    image: axllent/mailpit:v1.21
+
+  pretix:
+    build:
+      context: ..
+      dockerfile: integration/Dockerfile
+      args:
+        PRETIX_IMAGE: pretix/standalone:${PRETIX_VERSION:-stable}
+    environment:
+      NUM_WORKERS: "2"
+    volumes:
+      - ./pretix.cfg:/etc/pretix/pretix.cfg:ro
+    ports:
+      - "8345:80"
+      # Prometheus shares this container's network (see below), so its port is published here.
+      - "9090:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost/healthcheck/"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    # pretix only answers requests for its configured domain (localhost), so Prometheus scrapes
+    # it on localhost from within the pretix container's network, like on a single server.
+    network_mode: "service:pretix"
+    depends_on:
+      pretix:
+        condition: service_healthy
