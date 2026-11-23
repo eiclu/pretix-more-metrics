@@ -164,3 +164,9 @@ SEED=$(docker compose exec -T -e AUTOMIGRATE=skip pretix pretix shell < seed.py 
 python3 run_checks.py "$SEED"
 docker compose down -v
 ```
+
+## License
+
+Copyright 2026 Luca Eichler
+
+Licensed under the Apache License, Version 2.0, see [LICENSE](LICENSE).

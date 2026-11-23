@@ -3,6 +3,8 @@ name = "pretix-more-metrics"
 dynamic = ["version"]
 description = "Additional Prometheus metrics for pretix (quotas, visitors, shop funnel, PostgreSQL, Redis, host), served from pretix's built-in /metrics endpoint."
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 keywords = ["pretix", "prometheus", "metrics"]
 dependencies = []
@@ -14,7 +16,7 @@ pretix_more_metrics = "pretix_more_metrics:PretixPluginMeta"
 test = ["pytest", "pytest-django", "fakeredis"]
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
