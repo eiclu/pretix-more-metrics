@@ -55,6 +55,25 @@ def test_unique_visitors_by_ip_and_session(redis):
     assert counts[("ip", "15m")] == 2
 
 
+def test_session_cookie_on_https(redis):
+    """On HTTPS pretix calls the cookie __Host-pretix_session."""
+    env = environ(ip="203.0.113.5")
+    env["HTTP_COOKIE"] = "__Host-pretix_csrftoken=x; __Host-pretix_session=s1"
+    requests.on_request_started(env)
+    env2 = environ(ip="203.0.113.5")
+    env2["HTTP_COOKIE"] = "__Host-pretix_session=s2"
+    requests.on_request_started(env2)
+    assert visitor_counts()[("session", "1m")] == 2
+
+
+def test_https_session_cookie_wins_over_legacy_cookie():
+    env = {"HTTP_COOKIE": "pretix_session=old; __Host-pretix_session=new"}
+    assert visitors.session_id(env) == "new"
+    assert visitors.session_id({"HTTP_COOKIE": "pretix_session=plain"}) == "plain"
+    assert visitors.session_id({"HTTP_COOKIE": "other=1"}) is None
+    assert visitors.session_id({}) is None
+
+
 def test_ids_are_not_stored_in_clear(redis):
     requests.on_request_started(environ(ip="203.0.113.5", session="secret-session"))
     keys = redis.keys("pretix_more_metrics:visitors:*")
@@ -106,3 +125,18 @@ def test_signal_receivers_run_on_real_requests(client, redis, event):
     client.get("/htu/tuball/", REMOTE_ADDR="203.0.113.50")
     assert visitor_counts()[("ip", "1m")] == 1
     assert in_flight() == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("secure", [False, True])
+def test_real_session_cookie_is_counted(client, redis, event, quota, secure):
+    """Add to cart through pretix's real views so pretix itself chooses the cookie name."""
+    from django_scopes import scopes_disabled
+
+    with scopes_disabled():
+        item = quota.items.first()
+    client.post("/htu/tuball/cart/add", {f"item_{item.pk}": "1"}, secure=secure, REMOTE_ADDR="203.0.113.60")
+    expected = "__Host-pretix_session" if secure else "pretix_session"
+    assert expected in client.cookies
+    client.get("/htu/tuball/", secure=secure, REMOTE_ADDR="203.0.113.60")
+    assert visitor_counts()[("session", "1m")] == 1

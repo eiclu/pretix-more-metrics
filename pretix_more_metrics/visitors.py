@@ -64,10 +64,19 @@ def client_ip(environ):
 
 
 def session_id(environ):
+    """
+    pretix names the session cookie ``__Host-pretix_session`` on HTTPS and ``pretix_session``
+    on plain HTTP (see ``pretix.multidomain.middlewares.SessionMiddleware``). Same lookup order.
+    """
     cookie = environ.get("HTTP_COOKIE")
     if not cookie:
         return None
-    return parse_cookie(cookie).get(settings.SESSION_COOKIE_NAME) or None
+    cookies = parse_cookie(cookie)
+    return (
+        cookies.get("__Host-" + settings.SESSION_COOKIE_NAME)
+        or cookies.get(settings.SESSION_COOKIE_NAME)
+        or None
+    )
 
 
 def identifiers(environ):
